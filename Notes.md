@@ -152,3 +152,132 @@ For server-side tools (Tutorial section 3.4): use `async def` when the tool does
 ### Gotcha
 
 The tutorial names the server file `server.py`. If the file is misnamed (earlier it was `sever.py`), `from server import mcp` fails until the file is renamed or the import is changed to match.
+
+---
+
+## 5. Richer schemas (Tutorial section 3.2): what do `typing`, `pydantic`, `Annotated`, `Literal` and `Field` do?
+
+```python
+from typing import Annotated, Literal
+from pydantic import Field
+
+@mcp.tool()
+def search_books(
+    query: Annotated[str, Field(description="Title or author to search for.")],
+    limit: Annotated[int, Field(ge=1, le=50, description="Maximum number of results.")] = 10,
+    genre: Literal["fiction", "non-fiction", "poetry"] | None = None,
+) -> list[str]:
+    ...
+```
+
+### The two libraries
+
+- **`typing`** is part of Python's standard library. It provides tools for writing precise type hints. Python doesn't enforce hints at runtime, but other code (like the MCP SDK) can read and act on them.
+- **`pydantic`** is a third-party library, installed along with `mcp`. It validates data against type hints and generates JSON Schema from them. The SDK uses it to build the tool's input schema and check incoming arguments.
+
+### The three imports
+
+| Import | From | Role |
+|---|---|---|
+| `Annotated` | `typing` | Attach extra info to a type without changing the type |
+| `Literal` | `typing` | Limit a value to specific choices (becomes an `enum`) |
+| `Field` | `pydantic` | Hold the description and validation rules |
+
+**`Annotated[type, extra_info]`**: `query` is still a `str`. The `Field(...)` is a note attached to it for tools that read it. Plain Python ignores the note.
+
+**`Field(...)`**:
+
+| Part | Effect |
+|---|---|
+| `description=...` | Text the model reads in the schema |
+| `ge=1` | "greater than or equal to 1" → `minimum: 1` |
+| `le=50` | "less than or equal to 50" → `maximum: 50` |
+
+These rules are enforced. If the model sends `limit=999`, the SDK rejects it before the function runs and returns `Input should be less than or equal to 50`, so the model can retry. The `= 10` default sits outside `Annotated[...]` because it belongs to the parameter, not the type.
+
+**`Literal[...]`**: `Literal["fiction", "non-fiction", "poetry"]` allows only those three strings. `| None` also allows `None`, and `= None` makes the argument optional.
+
+### Resulting schema
+
+```json
+{
+  "properties": {
+    "query": {"type": "string", "description": "Title or author to search for."},
+    "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10,
+              "description": "Maximum number of results."},
+    "genre": {"enum": ["fiction", "non-fiction", "poetry"], "default": null}
+  },
+  "required": ["query"]
+}
+```
+
+Note: in the tutorial, `search_books` accepts `genre` but never uses it in the filter. It is there only to show the schema.
+
+---
+
+## 6. Can the client and server live in the same Python file?
+
+Yes, but it can change how the program runs.
+
+**In-memory client works**, as long as the client code is behind a guard and `mcp.run()` isn't also called on that path:
+
+```python
+async def main():
+    async with Client(mcp) as client:
+        print(await client.call_tool("add", {"a": 1, "b": 2}))
+
+if __name__ == "__main__":
+    anyio.run(main)
+```
+
+**Problems with other setups:**
+
+1. **Hosts and the CLI import your file.** `mcp dev`, `mcp run` and Claude Desktop load the file to find `mcp`. Unguarded client code would run on every import.
+2. **stdio: `print()` breaks the protocol.** stdout is the wire, so stray prints corrupt the message stream.
+3. **A stdio client that launches its own file loops forever.** The subprocess runs the same file, which starts another client, which launches another subprocess. A `__main__` guard doesn't fix it, because the subprocess is also `__main__`.
+4. **HTTP needs two processes anyway.** The server must already be running elsewhere.
+5. **`mcp.run()` blocks.** It waits on stdin, so client code placed after it never runs.
+
+**Recommendation:** keep them separate, as the tutorial does. The server file defines `mcp` and calls `mcp.run()` under `__main__`. The client or test file does `from server import mcp`, or connects by URL or command. A single file is only reasonable for a quick in-memory experiment.
+
+---
+
+## 7. Can I give user-defined input to a tool when writing the client?
+
+Yes. The second argument of `call_tool` is a plain dict, so its values can come from `input()`, `argparse`, a file, a web form, etc. The server only sees the final dict.
+
+```python
+async def main() -> None:
+    query = input("Search for: ")
+    limit = int(input("Max results: "))     # input() returns str, so convert
+
+    async with Client(mcp) as client:
+        result = await client.call_tool("search_books", {"query": query, "limit": limit})
+        if result.is_error:
+            print("Error:", result.content[0].text)
+        else:
+            print(result.structured_content)
+
+anyio.run(main)
+```
+
+**Things to know:**
+
+- **Types matter.** `input()` always returns `str`. If the tool declares `limit: int`, send an `int`.
+- **Server-side validation still applies.** `limit=999` with `Field(le=50)` comes back as `is_error=True` with `Input should be less than or equal to 50`.
+- **Keys must match the tool's parameter names exactly.** Check them with `await client.list_tools()` and each tool's `input_schema`.
+- **Always check `result.is_error`** before using the result.
+- `input()` is fine in a client. It is only a problem inside a stdio *server*, where stdin and stdout carry the protocol.
+
+**Generic client** that prompts for each field in the schema (roughly what the MCP Inspector does):
+
+```python
+tool = (await client.list_tools()).tools[0]
+args = {}
+for name, spec in tool.input_schema["properties"].items():
+    raw = input(f"{name} ({spec.get('type')}): ")
+    args[name] = int(raw) if spec.get("type") == "integer" else raw
+result = await client.call_tool(tool.name, args)
+```
+
+In a real LLM-driven app, the model produces that dict itself, which is what "tools are model-controlled" means. A client using `input()` is you playing the model's role.
