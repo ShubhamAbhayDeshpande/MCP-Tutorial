@@ -113,13 +113,22 @@ import anyio
 from mcp import Client
 from server import mcp
 
+
 async def main() -> None:
     async with Client(mcp) as client:
         print(client.server_capabilities.model_dump(exclude_none=True))
         print([t.name for t in (await client.list_tools()).tools])
-        print([t.uri_template for t in (await client.list_resource_templates()).resource_templates])
+        print(
+            [
+                t.uri_template
+                for t in (
+                    await client.list_resource_templates()
+                ).resource_templates
+            ]
+        )
         print([p.name for p in (await client.list_prompts()).prompts])
         print(await client.call_tool("add", {"a": 1, "b": 2}))
+
 
 anyio.run(main)
 ```
@@ -161,13 +170,15 @@ The tutorial names the server file `server.py`. If the file is misnamed (earlier
 from typing import Annotated, Literal
 from pydantic import Field
 
+
 @mcp.tool()
 def search_books(
     query: Annotated[str, Field(description="Title or author to search for.")],
-    limit: Annotated[int, Field(ge=1, le=50, description="Maximum number of results.")] = 10,
+    limit: Annotated[
+        int, Field(ge=1, le=50, description="Maximum number of results.")
+    ] = 10,
     genre: Literal["fiction", "non-fiction", "poetry"] | None = None,
-) -> list[str]:
-    ...
+) -> list[str]: ...
 ```
 
 ### The two libraries
@@ -226,6 +237,7 @@ async def main():
     async with Client(mcp) as client:
         print(await client.call_tool("add", {"a": 1, "b": 2}))
 
+
 if __name__ == "__main__":
     anyio.run(main)
 ```
@@ -249,14 +261,17 @@ Yes. The second argument of `call_tool` is a plain dict, so its values can come 
 ```python
 async def main() -> None:
     query = input("Search for: ")
-    limit = int(input("Max results: "))     # input() returns str, so convert
+    limit = int(input("Max results: "))  # input() returns str, so convert
 
     async with Client(mcp) as client:
-        result = await client.call_tool("search_books", {"query": query, "limit": limit})
+        result = await client.call_tool(
+            "search_books", {"query": query, "limit": limit}
+        )
         if result.is_error:
             print("Error:", result.content[0].text)
         else:
             print(result.structured_content)
+
 
 anyio.run(main)
 ```

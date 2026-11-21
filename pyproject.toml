@@ -7,7 +7,10 @@ authors = [
     { name = "ShubhamAbhayDeshpande", email = "deshpandeaa6@gmail.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "black>=26.10.1",
+    "ruff>=0.17.6",
+]
 
 [project.scripts]
 mcp-tutorial = "mcp_tutorial:main"
@@ -22,3 +25,8 @@ dev = [
     "numpy>=2.5.5",
     "pytest>=9.2.0",
 ]
+[tool.ruff]
+line-length = 79
+
+[tool.ruff.lint]
+select = ["E", "W", "F"]   # E501 = line too long

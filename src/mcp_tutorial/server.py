@@ -12,23 +12,29 @@ the model context. The job of the server is to just expose the tools and resourc
 
 """
 
+
 @mcp.tool()
-def add(a:int, b:int) -> int:
+def add(a: int, b: int) -> int:
     """Add the two integers given as inputs"""
-    return a+b
+    return a + b
+
 
 """The model only sees the infomration in the resource as a context. Client lists the resources and shows them to the model (or user program). 
 The model then chooses the resource to be attached in the context. It did not run anything.  
 """
+
+
 @mcp.resource("greetings://{name}")
-def greetings(name:str) -> str:
+def greetings(name: str) -> str:
     """Greet someone by name"""
     return f"Hello, {name}!"
+
 
 @mcp.prompt()
 def summerize(text: str) -> str:
     """Summerize a piece of text in one sentence"""
     return f"Summerize the following text in one sentence: \n\n{text}"
+
 
 if __name__ == "__main__":
     mcp.run()

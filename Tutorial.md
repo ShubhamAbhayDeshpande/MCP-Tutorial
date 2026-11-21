@@ -126,10 +126,17 @@ from server import mcp
 
 
 async def main() -> None:
-    async with Client(mcp) as client:          # in-memory: no process, no port
+    async with Client(mcp) as client:  # in-memory: no process, no port
         print(client.server_capabilities.model_dump(exclude_none=True))
         print([t.name for t in (await client.list_tools()).tools])
-        print([t.uri_template for t in (await client.list_resource_templates()).resource_templates])
+        print(
+            [
+                t.uri_template
+                for t in (
+                    await client.list_resource_templates()
+                ).resource_templates
+            ]
+        )
         print([p.name for p in (await client.list_prompts()).prompts])
         print(await client.call_tool("add", {"a": 1, "b": 2}))
 
@@ -169,7 +176,11 @@ CATALOG = {
 def search_books(query: str, limit: int = 10) -> list[str]:
     """Search the catalog by title or author."""
     needle = query.lower()
-    hits = [t for t, a in CATALOG.items() if needle in t.lower() or needle in a.lower()]
+    hits = [
+        t
+        for t, a in CATALOG.items()
+        if needle in t.lower() or needle in a.lower()
+    ]
     return hits[:limit]
 ```
 
@@ -202,12 +213,18 @@ from pydantic import Field
 @mcp.tool()
 def search_books(
     query: Annotated[str, Field(description="Title or author to search for.")],
-    limit: Annotated[int, Field(ge=1, le=50, description="Maximum number of results.")] = 10,
+    limit: Annotated[
+        int, Field(ge=1, le=50, description="Maximum number of results.")
+    ] = 10,
     genre: Literal["fiction", "non-fiction", "poetry"] | None = None,
 ) -> list[str]:
     """Search the catalog by title or author."""
     needle = query.lower()
-    hits = [t for t, a in CATALOG.items() if needle in t.lower() or needle in a.lower()]
+    hits = [
+        t
+        for t, a in CATALOG.items()
+        if needle in t.lower() or needle in a.lower()
+    ]
     return hits[:limit]
 ```
 
@@ -278,7 +295,9 @@ Both come from the single value you `return`. Add to `bookshop.py`:
 class AuthorInfo(BaseModel):
     title: str
     author: str
-    books_by_author: int = Field(description="How many catalog books share this author.")
+    books_by_author: int = Field(
+        description="How many catalog books share this author."
+    )
 
 
 @mcp.tool()
@@ -361,23 +380,25 @@ mcp = MCPServer("Bookshop")
 CATALOG = {"Dune": "Frank Herbert", "Neuromancer": "William Gibson"}
 
 
-@mcp.resource("catalog://titles")                       # concrete resource
+@mcp.resource("catalog://titles")  # concrete resource
 def titles() -> str:
     """Every title in the catalog, one per line."""
     return "\n".join(sorted(CATALOG))
 
 
 @mcp.resource("stats://catalog", mime_type="application/json")
-def catalog_stats() -> dict[str, int]:                  # dict -> JSON text
+def catalog_stats() -> dict[str, int]:  # dict -> JSON text
     """Live counts for the catalog."""
     return {"books": len(CATALOG), "authors": len(set(CATALOG.values()))}
 
 
-@mcp.resource("books://{title}")                        # template
+@mcp.resource("books://{title}")  # template
 def book(title: str) -> str:
     """The catalog entry for one book."""
     if title not in CATALOG:
-        raise ResourceNotFoundError(f"No book titled {title!r} in the catalog.")
+        raise ResourceNotFoundError(
+            f"No book titled {title!r} in the catalog."
+        )
     return f"{title} by {CATALOG[title]}"
 ```
 
@@ -400,7 +421,11 @@ A prompt is a template the **user** picks. Arguments are a flat list of **string
 
 ```python
 from mcp.server import MCPServer
-from mcp.server.mcpserver.prompts.base import AssistantMessage, Message, UserMessage
+from mcp.server.mcpserver.prompts.base import (
+    AssistantMessage,
+    Message,
+    UserMessage,
+)
 from typing import Annotated
 from pydantic import Field
 
@@ -410,7 +435,9 @@ mcp = MCPServer("Code Helper")
 @mcp.prompt(title="Code review")
 def review_code(
     code: Annotated[str, Field(description="The code to review.")],
-    language: Annotated[str, Field(description="Language of the code.")] = "python",
+    language: Annotated[
+        str, Field(description="Language of the code.")
+    ] = "python",
 ) -> str:
     """Review a piece of code."""
     return f"Please review this {language} code:\n\n{code}"
@@ -455,7 +482,9 @@ def genres() -> str:
 @mcp.tool()
 async def describe_catalog(ctx: Context) -> str:
     """Describe how the catalog is organised."""
-    [contents] = await ctx.read_resource("catalog://genres")   # tool reads its own resource
+    [contents] = await ctx.read_resource(
+        "catalog://genres"
+    )  # tool reads its own resource
     return f"[request {ctx.request_id}] The catalog is organised into: {contents.content}"
 ```
 
@@ -480,7 +509,9 @@ What `ctx` gives you:
 async def import_catalog(urls: list[str], ctx: Context) -> str:
     """Import book records from a list of catalog URLs."""
     for done, url in enumerate(urls, start=1):
-        await ctx.report_progress(done, total=len(urls), message=f"Imported {url}")
+        await ctx.report_progress(
+            done, total=len(urls), message=f"Imported {url}"
+        )
     return f"Imported {len(urls)} records."
 ```
 
@@ -510,11 +541,11 @@ database = Database()
 
 @asynccontextmanager
 async def app_lifespan(server: MCPServer) -> AsyncIterator[AppContext]:
-    database.connected = True            # startup: once, before the first request
+    database.connected = True  # startup: once, before the first request
     try:
         yield AppContext(db=database)
     finally:
-        database.connected = False       # shutdown
+        database.connected = False  # shutdown
 
 
 mcp = MCPServer("Bookshop", lifespan=app_lifespan)
@@ -523,7 +554,11 @@ mcp = MCPServer("Bookshop", lifespan=app_lifespan)
 @mcp.tool()
 def database_status(ctx: Context[AppContext]) -> str:
     """Report whether the database connection is up."""
-    return "connected" if ctx.request_context.lifespan_context.db.connected else "disconnected"
+    return (
+        "connected"
+        if ctx.request_context.lifespan_context.db.connected
+        else "disconnected"
+    )
 ```
 
 - Code before `yield` is startup and the `finally` is shutdown. It runs **once** per server life, not per request.
@@ -542,7 +577,9 @@ def recommend_book(genre: str) -> str:
 async def enable_recommendations(ctx: Context) -> str:
     """Switch on the recommendation tool."""
     mcp.add_tool(recommend_book)
-    await ctx.session.send_tool_list_changed()   # tells the client to re-run tools/list
+    await (
+        ctx.session.send_tool_list_changed()
+    )  # tells the client to re-run tools/list
     return "Recommendations are now available."
 ```
 
@@ -574,7 +611,9 @@ To serve over HTTP, name the transport in `run()` (transport options go to `run(
 
 ```python
 if __name__ == "__main__":
-    mcp.run(transport="streamable-http", port=8000)    # http://127.0.0.1:8000/mcp
+    mcp.run(
+        transport="streamable-http", port=8000
+    )  # http://127.0.0.1:8000/mcp
 ```
 
 Or from the CLI: `mcp run server.py --transport streamable-http`. (SSE is the old transport; don't build new things on it.)
@@ -594,7 +633,9 @@ import anyio
 from mcp import Client
 
 
-async def show(progress: float, total: float | None, message: str | None) -> None:
+async def show(
+    progress: float, total: float | None, message: str | None
+) -> None:
     print(f"{message} ({progress}/{total})")
 
 
@@ -604,10 +645,15 @@ async def main() -> None:
 
         result = await client.call_tool(
             "import_catalog",
-            {"urls": ["https://example.com/a.json", "https://example.com/b.json"]},
-            progress_callback=show,           # per call, never on Client(...)
+            {
+                "urls": [
+                    "https://example.com/a.json",
+                    "https://example.com/b.json",
+                ]
+            },
+            progress_callback=show,  # per call, never on Client(...)
         )
-        print(result.structured_content)       # {'result': 'Imported 2 records.'}
+        print(result.structured_content)  # {'result': 'Imported 2 records.'}
 
 
 anyio.run(main)
@@ -628,8 +674,12 @@ from mcp import Client, StdioServerParameters
 
 
 async def main() -> None:
-    params = StdioServerParameters(command=sys.executable, args=["bookshop.py"])
-    async with Client(params) as client:       # launches bookshop.py as a subprocess
+    params = StdioServerParameters(
+        command=sys.executable, args=["bookshop.py"]
+    )
+    async with Client(
+        params
+    ) as client:  # launches bookshop.py as a subprocess
         print([t.name for t in (await client.list_tools()).tools])
         print((await client.call_tool("count_books", {})).structured_content)
 
@@ -646,12 +696,12 @@ from mcp.types import TextContent
 
 result = await client.call_tool("get_author", {"title": "Dune"})
 
-if result.is_error:                       # ALWAYS check first
+if result.is_error:  # ALWAYS check first
     ...
-for block in result.content:              # a union of block types
-    if isinstance(block, TextContent):    # narrow before using .text
+for block in result.content:  # a union of block types
+    if isinstance(block, TextContent):  # narrow before using .text
         print(block.text)
-print(result.structured_content)          # typed data for your code
+print(result.structured_content)  # typed data for your code
 ```
 
 - `is_error` is set for tool errors, bad arguments and even unknown tool names. These come back as results, not exceptions.
@@ -733,7 +783,9 @@ async def test_tool_error_is_readable_by_the_model(client: Client):
 
 @pytest.mark.anyio
 async def test_validation_runs_before_the_function(client: Client):
-    result = await client.call_tool("search_books", {"query": "dune", "limit": 999})
+    result = await client.call_tool(
+        "search_books", {"query": "dune", "limit": 999}
+    )
     assert result.is_error
     assert "less than or equal to 50" in result.content[0].text
 ```
