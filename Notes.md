@@ -296,3 +296,9 @@ result = await client.call_tool(tool.name, args)
 ```
 
 In a real LLM-driven app, the model produces that dict itself, which is what "tools are model-controlled" means. A client using `input()` is you playing the model's role.
+
+---
+
+## 8. What is Pydantic's `BaseModel`?
+
+A class that inherits from `BaseModel` becomes a data model: its type-hinted fields are validated at runtime (with compatible values coerced, e.g. `"25"` → `25`) and it can be serialized back to a dict or JSON. In MCP, the SDK uses this to build the JSON Schema for a tool's input or output (see `Book` in Tutorial section 3.3). Source: [DataCamp Pydantic tutorial](https://www.datacamp.com/tutorial/pydantic).

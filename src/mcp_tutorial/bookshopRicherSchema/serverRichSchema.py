@@ -4,6 +4,7 @@ and how to use them to the AI model when the tools and resources are exposed to 
 
 # Imports
 from mcp.server import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from typing import Annotated, Literal
 from pydantic import BaseModel, Field
@@ -26,6 +27,13 @@ class Book(BaseModel):
         int, Field(ge=1450, description="The year in which the " "book was published")
     ]
 
+# Class used to get the information about the author using a tool.
+# The class inherits from the BaseModel.
+class AuthorInfo(BaseModel):
+    title: str
+    author: str
+    books_by_author: Annotated[int, Field("How many books from the same author" \
+    "are present in the catalog")]
 
 app = MCPServer("richBookshop")
 
@@ -106,7 +114,40 @@ def remove_book(
     print(f"The book {book_name} has been removed from the catalog.")
     return CATALOG
 
+@app.tool(
+        title="Display the Author's name based on the given book name.",
+        annotations=ToolAnnotations(
+            read_only_hint=True,
+            open_world_hint=False
+        ),
+)
+def get_author(
+    book_name: Annotated[str, Field("Name of the book for which Author's name" \
+    "is to be found"
+    )
+    ]
+)-> AuthorInfo: 
+    """
+    Find the author name for the given book title and find how many books are 
+    written by the same author
+    
+    Args: book_name, a string of book title 
+    
+    Returns: AuthorInfo object for the given book title
+    
+    """
+    book_count = 0
+    if book_name not in CATALOG.keys():
+        raise ToolError("The given book name is not present in the catalog")
+    title = book_name
+    author = CATALOG[book_name]
+    for book_author in CATALOG.values():
+        if book_author == author:
+            book_count += 1
+    return AuthorInfo(title=title, author=author, books_by_author=book_count)
 
+    
+    
 @app.tool(
     title="Display the current catalog",
     annotations=ToolAnnotations(
